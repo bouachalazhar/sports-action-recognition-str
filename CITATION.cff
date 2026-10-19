@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the article and the archived release."
+title: "Recognition of Action Phases from Spatio-Temporal Intermediate Representations in Amateur Sports Competition Videos"
+type: software
+authors:
+  - family-names: Bouacha
+    given-names: Lazhar
+  - family-names: Magnien
+    given-names: Thierry
+  - family-names: Wendling
+    given-names: Laurent
+  - family-names: Kurtz
+    given-names: Camille
+repository-code: "https://github.com/bouachalazhar/sports-action-recognition-str"
+license: Apache-2.0
+version: "1.0.0"
+date-released: "2026-10-19"
+preferred-citation:
+  type: article
+  title: "Recognition of Action Phases from Spatio-Temporal Intermediate Representations in Amateur Sports Competition Videos"
+  authors:
+    - family-names: Bouacha
+      given-names: Lazhar
+    - family-names: Magnien
+      given-names: Thierry
+    - family-names: Wendling
+      given-names: Laurent
+    - family-names: Kurtz
+      given-names: Camille
+  journal: "Computer Vision and Image Understanding"
+  volume: 268
+  start: 104748
+  year: 2026
+  doi: "10.1016/j.cviu.2026.104748"
