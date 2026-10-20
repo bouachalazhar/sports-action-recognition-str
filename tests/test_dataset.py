@@ -95,6 +95,25 @@ def test_grouped_split_rejects_single_source_group(tmp_path: Path) -> None:
         grouped_split(clips)
 
 
+def test_grouped_split_covers_every_label_with_distinct_groups(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "data"
+    for label, prefix in (("action", "a"), ("non_action", "b")):
+        for index in range(3):
+            clip = root / "train" / label / f"{prefix}{index}" / "clip"
+            write_image(clip / "str" / "0.png", 128)
+
+    clips = discover_clips(root)
+    train, validation = grouped_split(clips, validation_fraction=0.34, seed=7)
+
+    assert {clip.group for clip in train}.isdisjoint(
+        {clip.group for clip in validation}
+    )
+    assert {clip.label_name for clip in train} == {"action", "non_action"}
+    assert {clip.label_name for clip in validation} == {"action", "non_action"}
+
+
 def test_grouped_split_rejects_invalid_fraction(tmp_path: Path) -> None:
     root = make_dataset(tmp_path / "data")
     clips = discover_clips(root)

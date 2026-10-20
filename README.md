@@ -108,6 +108,11 @@ Checkpoints are selected on validation macro-F1. Reported scores are
 clip-level: per-image accuracy overweights clips that produce many STR images,
 so it is not used as a selection criterion.
 
+Checkpoints are loaded through PyTorch's restricted unpickler. A checkpoint
+saved by v1.0.0 contains the old argument namespace and needs
+`--allow-legacy-checkpoint` (only for a trusted local file); v1.0.1
+checkpoints load without that flag.
+
 ## Repository layout
 
 ```text
@@ -120,6 +125,7 @@ src/str_action/
   evaluate.py   clip-level metrics
   infer.py      end-to-end inference
   build.py      dataset construction
+  checkpoints.py checkpoint compatibility loader
 tests/          unit and smoke tests
 ```
 

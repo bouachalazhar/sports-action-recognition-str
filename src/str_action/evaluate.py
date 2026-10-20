@@ -9,6 +9,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+from str_action.checkpoints import load_checkpoint
 from str_action.metrics import (
     confusion_matrix,
     macro_f1,
@@ -101,10 +102,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--output", type=Path, default=Path("metrics.json"))
     parser.add_argument("--image-size", type=int, default=None)
+    parser.add_argument(
+        "--allow-legacy-checkpoint",
+        action="store_true",
+        help="allow trusted v1.0.0 checkpoints (unsafe unpickler)",
+    )
     args = parser.parse_args(argv)
 
     device = resolve_device(args.device)
-    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
+    checkpoint = load_checkpoint(
+        args.checkpoint, allow_legacy=args.allow_legacy_checkpoint
+    )
     model_name = checkpoint["model_name"]
     classes: list[str] = checkpoint["class_names"]
     image_size = args.image_size or int(checkpoint.get("image_size", 224))

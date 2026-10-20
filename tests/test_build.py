@@ -72,8 +72,8 @@ def test_grouped_split_keeps_match_groups_together(tmp_path: Path) -> None:
     clips = discover_clips(root)
     train, validation = grouped_split(clips, validation_fraction=0.34, seed=7)
 
-    train_groups = {(clip.label_name, clip.group) for clip in train}
-    validation_groups = {(clip.label_name, clip.group) for clip in validation}
-    assert train_groups.isdisjoint(validation_groups)
-    assert {label for label, _group in train_groups} == {"action", "no_action"}
-    assert {label for label, _group in validation_groups} == {"action", "no_action"}
+    assert {clip.group for clip in train}.isdisjoint(
+        {clip.group for clip in validation}
+    )
+    assert {clip.label_name for clip in train} == {"action", "no_action"}
+    assert {clip.label_name for clip in validation} == {"action", "no_action"}

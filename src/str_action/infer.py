@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import torch
 
+from str_action.checkpoints import load_checkpoint
 from str_action.models import build_model
 from str_action.roi import roi_str
 from str_action.utils import resolve_device, seed_everything, write_json
@@ -37,12 +38,13 @@ def classify_video(
     seed: int = 17,
     device: str = "auto",
     output_dir: Path | None = None,
+    allow_legacy_checkpoint: bool = False,
 ) -> dict[str, object]:
     """Classify one video and return the per-STR probabilities and the decision."""
     seed_everything(seed)
     torch_device = resolve_device(device)
 
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    checkpoint = load_checkpoint(checkpoint_path, allow_legacy=allow_legacy_checkpoint)
     classes: list[str] = checkpoint["class_names"]
     resolved_image_size = image_size or int(checkpoint.get("image_size", 224))
     model = build_model(
@@ -137,6 +139,11 @@ def main(argv: list[str] | None = None) -> int:
         help="apply the active ROI mask to every walk, or use the full frame",
     )
     parser.add_argument("--seed", type=int, default=17)
+    parser.add_argument(
+        "--allow-legacy-checkpoint",
+        action="store_true",
+        help="allow trusted v1.0.0 checkpoints (unsafe unpickler)",
+    )
     parser.add_argument("--device", default="auto")
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--report", type=Path, default=Path("inference.json"))
@@ -152,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         device=args.device,
         output_dir=args.output_dir,
+        allow_legacy_checkpoint=args.allow_legacy_checkpoint,
     )
     write_json(args.report, report)
     print(f"{args.video}: {report['prediction']}")

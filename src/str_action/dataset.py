@@ -116,40 +116,92 @@ def grouped_split(
     validation_fraction: float = 0.2,
     seed: int = 17,
 ) -> tuple[list[ClipSample], list[ClipSample]]:
-    """Split by source group, stratified by label, without group leakage.
+    """Split globally by source group, without group leakage.
 
-    A flat tree where every clip name is its own group is supported for small
-    demonstrations. A tree with one group per label cannot be split without
-    leaking that group, so it raises instead of silently producing a fake
-    validation set.
+    A group is assigned to exactly one partition, even when it contains clips
+    from several labels. The split also keeps every label in both partitions;
+    if the requested fraction is too small to satisfy that coverage, the
+    validation set grows to the minimum feasible size. A group that is the only
+    source for a label cannot be split without leakage, so it raises instead of
+    silently producing a fake validation set.
     """
     if not 0.0 < validation_fraction < 1.0:
         raise ValueError("validation_fraction must lie strictly between 0 and 1")
+    if not clips:
+        raise ValueError("clip list is empty")
 
-    by_label: dict[int, dict[str, list[ClipSample]]] = {}
-    for clip in clips:
-        by_label.setdefault(clip.label, {}).setdefault(clip.group, []).append(clip)
-
-    generator = random.Random(seed)
-    train: list[ClipSample] = []
-    validation: list[ClipSample] = []
-    for label in sorted(by_label):
-        groups = sorted(by_label[label])
-        if len(groups) < 2:
+    groups = sorted({clip.group for clip in clips})
+    labels = sorted({clip.label for clip in clips})
+    group_labels = {
+        group: {clip.label for clip in clips if clip.group == group} for group in groups
+    }
+    for label in labels:
+        label_groups = [group for group in groups if label in group_labels[group]]
+        if len(label_groups) < 2:
             raise ValueError(
                 f"label {label} has only one source group; provide at least two "
                 "groups to build a leak-free train/validation split"
             )
-        generator.shuffle(groups)
-        validation_count = max(1, int(round(len(groups) * validation_fraction)))
-        validation_count = min(validation_count, len(groups) - 1)
-        for group in groups[:validation_count]:
-            validation.extend(by_label[label][group])
-        for group in groups[validation_count:]:
-            train.extend(by_label[label][group])
 
+    generator = random.Random(seed)
+    shuffled_groups = list(groups)
+    generator.shuffle(shuffled_groups)
+    shuffled_labels = list(labels)
+    generator.shuffle(shuffled_labels)
+
+    target = max(1, int(round(len(groups) * validation_fraction)))
+    target = min(target, len(groups) - 1)
+    selected: set[str] = set()
+
+    def train_covers_all_labels() -> bool:
+        train_labels = {clip.label for clip in clips if clip.group not in selected}
+        return set(labels) <= train_labels
+
+    # First make sure that validation covers every label. A shared group can
+    # cover several labels at once, so this may select fewer than len(labels).
+    for label in shuffled_labels:
+        if any(label in group_labels[group] for group in selected):
+            continue
+        uncovered = set(labels) - {
+            covered for group in selected for covered in group_labels[group]
+        }
+        candidates = [
+            group
+            for group in shuffled_groups
+            if label in group_labels[group] and group not in selected
+        ]
+        generator.shuffle(candidates)
+        candidates.sort(key=lambda group: -len(group_labels[group] & uncovered))
+        for group in candidates:
+            selected.add(group)
+            if train_covers_all_labels():
+                break
+            selected.remove(group)
+        else:
+            raise ValueError(
+                f"cannot cover label {label} in both partitions; "
+                "provide more source groups"
+            )
+
+    # Fill the validation set towards the requested fraction, but never remove
+    # a label from the training partition.
+    for group in shuffled_groups:
+        if len(selected) >= target:
+            break
+        if group in selected:
+            continue
+        selected.add(group)
+        if not train_covers_all_labels():
+            selected.remove(group)
+
+    validation = [clip for clip in clips if clip.group in selected]
+    train = [clip for clip in clips if clip.group not in selected]
     if not train or not validation:
         raise ValueError("the requested split produced an empty partition")
+    if {clip.label for clip in train} != set(labels):
+        raise ValueError("grouped split removed a label from training")
+    if {clip.label for clip in validation} != set(labels):
+        raise ValueError("grouped split could not cover every label in validation")
     return sorted(train, key=lambda clip: clip.clip_id), sorted(
         validation, key=lambda clip: clip.clip_id
     )
