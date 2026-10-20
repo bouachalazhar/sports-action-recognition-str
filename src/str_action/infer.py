@@ -57,6 +57,7 @@ def classify_video(
         walk_length=walk_length,
         temporal_target_length=max(video.shape[0], walk_length // 2 + 1),
         temporal_pad_mode="duplicate",
+        start_mask=roi if np.any(roi) else None,
         seed=seed,
     )
 

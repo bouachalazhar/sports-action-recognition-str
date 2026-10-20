@@ -1,8 +1,9 @@
 """Build an STR image dataset from a labelled video tree.
 
-Expected input layout: ``<source>/<split>/<label>/<clip>.mp4``. The output
-layout mirrors it with one folder per clip containing its STR images, the ROI
-masks and the sampled points.
+Expected input layout: ``<source>/<label>/<clip>.mp4``. The output mirrors it
+with one folder per clip containing its STR images, the ROI masks and the
+sampled points. Walks of the positive class start inside the ROI, as in the
+article; negative-class walks start anywhere in the frame.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import json
 from pathlib import Path
 
 import cv2
+import numpy as np
 from tqdm import tqdm
 
 from str_action.infer import read_video
@@ -28,6 +30,7 @@ def build_split(
     *,
     walks: int,
     walk_length: int,
+    roi_labels: tuple[str, ...],
     seed: int,
 ) -> int:
     """Convert every video of one source tree into STR images."""
@@ -51,12 +54,14 @@ def build_split(
         cv2.imwrite(str(folder / "roi.png"), roi)
 
         video = read_video(video_path)
+        use_roi = label.lower() in roi_labels and bool(np.any(roi))
         images, points = random_walk_frames(
             video,
             walk_count=walks,
             walk_length=walk_length,
             temporal_target_length=max(video.shape[0], walk_length // 2 + 1),
             temporal_pad_mode="duplicate",
+            start_mask=roi if use_roi else None,
             seed=seed + counter,
         )
 
@@ -86,6 +91,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--walks", type=int, default=1000)
     parser.add_argument("--walk-length", type=int, default=112)
+    parser.add_argument(
+        "--roi-labels",
+        default="action",
+        help="comma-separated labels whose walks start inside the ROI",
+    )
     parser.add_argument("--seed", type=int, default=17)
     args = parser.parse_args(argv)
 
@@ -95,6 +105,9 @@ def main(argv: list[str] | None = None) -> int:
         args.destination,
         walks=args.walks,
         walk_length=args.walk_length,
+        roi_labels=tuple(
+            value.strip().lower() for value in args.roi_labels.split(",") if value
+        ),
         seed=args.seed,
     )
     print(f"converted {count} videos into {args.destination}")

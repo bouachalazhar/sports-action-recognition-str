@@ -188,9 +188,17 @@ def _walk_coordinates(
     width: int,
     stride: int,
     seed: int,
+    start_mask: np.ndarray | None,
 ) -> np.ndarray:
     if seed != -1:
         np.random.seed(seed)
+
+    valid_rows = np.empty(0, dtype=np.int64)
+    valid_columns = np.empty(0, dtype=np.int64)
+    if start_mask is not None:
+        valid_rows, valid_columns = np.nonzero(start_mask)
+        if valid_rows.size == 0:
+            raise ValueError("start_mask contains no valid starting pixel")
 
     coordinates = np.zeros((walk_count, walk_length, 2), dtype=np.int32)
     deltas = np.array(
@@ -199,8 +207,13 @@ def _walk_coordinates(
     )
 
     for index in range(walk_count):
-        row = np.random.randint(0, height)
-        column = np.random.randint(0, width)
+        if start_mask is not None:
+            chosen_start = np.random.randint(0, valid_rows.size)
+            row = valid_rows[chosen_start]
+            column = valid_columns[chosen_start]
+        else:
+            row = np.random.randint(0, height)
+            column = np.random.randint(0, width)
 
         for step in range(walk_length):
             coordinates[index, step, 0] = row
@@ -247,6 +260,7 @@ def random_walk_frames(
     aggregate_mode: str = "mean",
     walk_stride: int = 1,
     shape_dilation: int = 1,
+    start_mask: np.ndarray | None = None,
     seed: int | None = None,
 ) -> tuple[np.ndarray, list[tuple[int, int]]]:
     """Build STR images from a video volume.
@@ -263,6 +277,8 @@ def random_walk_frames(
         aggregate_mode: Pixel aggregation mode, see :func:`aggregate_pixels`.
         walk_stride: Step size of the walk, in pixels.
         shape_dilation: Sample spacing inside the sampling shape.
+        start_mask: Optional binary mask restricting the first pixel of each
+            walk. Use the ROI to sample walks that start on moving players.
         seed: Optional seed for reproducible walks.
 
     Returns:
@@ -276,6 +292,13 @@ def random_walk_frames(
         video = temporal_pad(video, temporal_target_length, temporal_pad_mode)
 
     _frames, height, width, _channels = video.shape
+
+    if start_mask is not None:
+        start_mask = np.asarray(start_mask)
+        if start_mask.shape != (height, width):
+            raise ValueError(
+                "start_mask must have the same height and width as the video"
+            )
 
     offsets = shape_offsets(shape_type, shape_params, shape_dilation)
     pixel_count = len(offsets)
@@ -293,6 +316,7 @@ def random_walk_frames(
         width,
         walk_stride,
         seed if seed is not None else -1,
+        start_mask,
     )
 
     offsets_array = np.array(offsets, dtype=np.int32).reshape(1, 1, pixel_count, 2)

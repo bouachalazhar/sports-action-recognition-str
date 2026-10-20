@@ -69,6 +69,22 @@ def test_random_walk_is_seeded() -> None:
     assert points_a == points_b
 
 
+def test_random_walk_starts_inside_mask() -> None:
+    video = np.zeros((6, 16, 16, 3), dtype=np.uint8)
+    mask = np.zeros((16, 16), dtype=np.uint8)
+    mask[8:12, 8:12] = 255
+    images, points = random_walk_frames(video, 8, 8, start_mask=mask, seed=5)
+    assert images.shape == (8, 6, 8, 3)
+    starts = points[::8]
+    assert all(8 <= row < 12 and 8 <= column < 12 for row, column in starts)
+
+
+def test_random_walk_rejects_empty_mask() -> None:
+    video = np.zeros((4, 16, 16, 3), dtype=np.uint8)
+    with pytest.raises(ValueError):
+        random_walk_frames(video, 2, 4, start_mask=np.zeros((16, 16)), seed=5)
+
+
 def test_random_walk_rejects_oversized_shape() -> None:
     video = np.zeros((4, 8, 8, 3), dtype=np.uint8)
     with pytest.raises(ValueError):
