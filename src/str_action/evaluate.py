@@ -100,20 +100,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--output", type=Path, default=Path("metrics.json"))
-    parser.add_argument("--image-size", type=int, default=224)
+    parser.add_argument("--image-size", type=int, default=None)
     args = parser.parse_args(argv)
 
     device = resolve_device(args.device)
-    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
     model_name = checkpoint["model_name"]
     classes: list[str] = checkpoint["class_names"]
+    image_size = args.image_size or int(checkpoint.get("image_size", 224))
 
-    model = build_model(model_name, num_classes=len(classes)).to(device)
+    model = build_model(
+        model_name,
+        num_classes=len(classes),
+        dropout=float(checkpoint.get("dropout", 0.0)),
+    ).to(device)
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
 
-    clips = discover_clips(args.data_root)
-    dataset = STRImageDataset(clips, image_size=args.image_size)
+    clips = discover_clips(args.data_root, label_order=classes)
+    dataset = STRImageDataset(clips, image_size=image_size)
     loader = DataLoader(
         dataset,
         batch_size=args.batch_size,

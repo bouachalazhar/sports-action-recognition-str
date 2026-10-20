@@ -76,6 +76,25 @@ def test_grouped_split_is_deterministic(tmp_path: Path) -> None:
     assert [clip.clip_id for clip in first[0]] == [clip.clip_id for clip in second[0]]
 
 
+def test_discover_clips_reuses_checkpoint_label_order(tmp_path: Path) -> None:
+    root = make_dataset(tmp_path / "data")
+    clips = discover_clips(root, label_order=["non_action", "action"])
+    by_name = {clip.label_name: clip.label for clip in clips}
+    assert by_name == {"non_action": 0, "action": 1}
+    with pytest.raises(ValueError):
+        discover_clips(root, label_order=["action"])
+
+
+def test_grouped_split_rejects_single_source_group(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    for label in ("action", "non_action"):
+        clip = root / "train" / label / "match_1" / "clip"
+        write_image(clip / "str" / "0.png", 128)
+    clips = discover_clips(root)
+    with pytest.raises(ValueError, match="only one source group"):
+        grouped_split(clips)
+
+
 def test_grouped_split_rejects_invalid_fraction(tmp_path: Path) -> None:
     root = make_dataset(tmp_path / "data")
     clips = discover_clips(root)

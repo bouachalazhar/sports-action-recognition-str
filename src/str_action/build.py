@@ -1,15 +1,18 @@
 """Build an STR image dataset from a labelled video tree.
 
-Expected input layout: ``<source>/<label>/<clip>.mp4``. The output mirrors it
-with one folder per clip containing its STR images, the ROI masks and the
-sampled points. Walks of the positive class start inside the ROI, as in the
-article; negative-class walks start anywhere in the frame.
+Expected input layout: ``<source>/<label>/<group>/<clip>.mp4``. The output
+preserves the label and group directories, with one folder per clip containing
+its full spatio-temporal STR images, the ROI masks and the sampled points.
+``--roi-mode all`` reproduces the ROI variant of the article and applies the
+active support mask to every step of the walk. ``--roi-mode none`` reproduces
+the no-ROI variant.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import warnings
 from pathlib import Path
 
 import cv2
@@ -30,22 +33,19 @@ def build_split(
     *,
     walks: int,
     walk_length: int,
-    roi_labels: tuple[str, ...],
+    roi_mode: str,
+    image_size: int,
     seed: int,
 ) -> int:
-    """Convert every video of one source tree into STR images."""
+    """Convert every video of one source tree into full STR images."""
     videos = sorted(
-        path
-        for path in source.rglob("*")
-        if path.suffix.lower() in VIDEO_SUFFIXES
+        path for path in source.rglob("*") if path.suffix.lower() in VIDEO_SUFFIXES
     )
     written = 0
 
     for counter, video_path in enumerate(tqdm(videos, desc=source.name)):
         relative = video_path.relative_to(source)
-        label = relative.parts[0]
-        clip = video_path.stem
-        folder = destination / label / clip
+        folder = destination / relative.parent / video_path.stem
         folder.mkdir(parents=True, exist_ok=True)
 
         field, players, roi = roi_str(str(video_path))
@@ -54,7 +54,13 @@ def build_split(
         cv2.imwrite(str(folder / "roi.png"), roi)
 
         video = read_video(video_path)
-        use_roi = label.lower() in roi_labels and bool(np.any(roi))
+        use_roi = roi_mode == "all" and bool(np.any(roi))
+        if roi_mode == "all" and not np.any(roi):
+            warnings.warn(
+                f"empty ROI for {video_path}; falling back to the full frame",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         images, points = random_walk_frames(
             video,
             walk_count=walks,
@@ -62,23 +68,21 @@ def build_split(
             temporal_target_length=max(video.shape[0], walk_length // 2 + 1),
             temporal_pad_mode="duplicate",
             start_mask=roi if use_roi else None,
+            walk_mask=roi if use_roi else None,
             seed=seed + counter,
         )
 
-        middle = images.shape[1] // 2
         str_dir = folder / "str"
         str_dir.mkdir(exist_ok=True)
         for index, image in enumerate(images):
             resized = cv2.resize(
-                image[middle], (224, 224), interpolation=cv2.INTER_LINEAR
+                image, (image_size, image_size), interpolation=cv2.INTER_LINEAR
             )
             cv2.imwrite(
                 str(str_dir / f"{index}.png"),
                 cv2.cvtColor(resized, cv2.COLOR_RGB2BGR),
             )
-        (folder / "points.json").write_text(
-            json.dumps(points), encoding="utf-8"
-        )
+        (folder / "points.json").write_text(json.dumps(points), encoding="utf-8")
         written += 1
 
     return written
@@ -91,10 +95,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--walks", type=int, default=1000)
     parser.add_argument("--walk-length", type=int, default=112)
+    parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument(
-        "--roi-labels",
-        default="action",
-        help="comma-separated labels whose walks start inside the ROI",
+        "--roi-mode",
+        choices=("all", "none"),
+        default="all",
+        help="apply the active ROI mask to every walk, or use the full frame",
     )
     parser.add_argument("--seed", type=int, default=17)
     args = parser.parse_args(argv)
@@ -105,9 +111,8 @@ def main(argv: list[str] | None = None) -> int:
         args.destination,
         walks=args.walks,
         walk_length=args.walk_length,
-        roi_labels=tuple(
-            value.strip().lower() for value in args.roi_labels.split(",") if value
-        ),
+        roi_mode=args.roi_mode,
+        image_size=args.image_size,
         seed=args.seed,
     )
     print(f"converted {count} videos into {args.destination}")

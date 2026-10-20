@@ -82,9 +82,7 @@ def shape_offsets(
         if side < 1:
             raise ValueError("square side must be >= 1")
         return [
-            (dy * dilation, dx * dilation)
-            for dy in range(side)
-            for dx in range(side)
+            (dy * dilation, dx * dilation) for dy in range(side) for dx in range(side)
         ]
 
     if shape_type == "rectangle":
@@ -128,6 +126,9 @@ def temporal_pad(video: np.ndarray, target_length: int, mode: str) -> np.ndarray
         return video[:target_length]
     if frames == 0:
         raise ValueError("cannot pad an empty video")
+
+    if mode == "bounce" and frames == 1:
+        return np.repeat(video, target_length, axis=0)
 
     if mode == "duplicate":
         repeats = np.ones(frames, dtype=int) * (target_length // frames)
@@ -189,6 +190,7 @@ def _walk_coordinates(
     stride: int,
     seed: int,
     start_mask: np.ndarray | None,
+    walk_mask: np.ndarray | None,
 ) -> np.ndarray:
     if seed != -1:
         np.random.seed(seed)
@@ -226,24 +228,20 @@ def _walk_coordinates(
                 for delta in range(8):
                     next_row = row + deltas[delta, 0] * stride
                     next_column = column + deltas[delta, 1] * stride
-                    if 0 <= next_row < height and 0 <= next_column < width:
-                        neighbours[valid_count, 0] = next_row
-                        neighbours[valid_count, 1] = next_column
-                        valid_count += 1
-
-                if valid_count == 0:
-                    for delta in range(8):
-                        next_row = row + deltas[delta, 0]
-                        next_column = column + deltas[delta, 1]
-                        if 0 <= next_row < height and 0 <= next_column < width:
-                            neighbours[valid_count, 0] = next_row
-                            neighbours[valid_count, 1] = next_column
-                            valid_count += 1
+                    if not (0 <= next_row < height and 0 <= next_column < width):
+                        continue
+                    if walk_mask is not None and walk_mask[next_row, next_column] == 0:
+                        continue
+                    neighbours[valid_count, 0] = next_row
+                    neighbours[valid_count, 1] = next_column
+                    valid_count += 1
 
                 if valid_count > 0:
                     chosen = np.random.randint(0, valid_count)
                     row = neighbours[chosen, 0]
                     column = neighbours[chosen, 1]
+                # Otherwise the walk self-loops on the current pixel, as in
+                # the manuscript's absorbing-boundary rule.
 
     return coordinates
 
@@ -261,6 +259,7 @@ def random_walk_frames(
     walk_stride: int = 1,
     shape_dilation: int = 1,
     start_mask: np.ndarray | None = None,
+    walk_mask: np.ndarray | None = None,
     seed: int | None = None,
 ) -> tuple[np.ndarray, list[tuple[int, int]]]:
     """Build STR images from a video volume.
@@ -278,7 +277,11 @@ def random_walk_frames(
         walk_stride: Step size of the walk, in pixels.
         shape_dilation: Sample spacing inside the sampling shape.
         start_mask: Optional binary mask restricting the first pixel of each
-            walk. Use the ROI to sample walks that start on moving players.
+            walk. Defaults to ``walk_mask`` when only that mask is supplied.
+        walk_mask: Optional binary mask restricting every pixel of the walk.
+            This is the manuscript's active support: a candidate neighbour is
+            accepted only when it falls inside the mask. When no neighbour is
+            available the walk self-loops on its current pixel.
         seed: Optional seed for reproducible walks.
 
     Returns:
@@ -293,21 +296,34 @@ def random_walk_frames(
 
     _frames, height, width, _channels = video.shape
 
+    if walk_mask is not None:
+        walk_mask = np.asarray(walk_mask)
+        if walk_mask.shape != (height, width):
+            raise ValueError(
+                "walk_mask must have the same height and width as the video"
+            )
+        if not np.any(walk_mask):
+            raise ValueError("walk_mask contains no valid pixel")
+
     if start_mask is not None:
         start_mask = np.asarray(start_mask)
         if start_mask.shape != (height, width):
             raise ValueError(
                 "start_mask must have the same height and width as the video"
             )
+        if walk_mask is not None:
+            start_mask = np.logical_and(start_mask, walk_mask).astype(np.uint8)
+        if not np.any(start_mask):
+            raise ValueError("start_mask contains no valid starting pixel")
+    elif walk_mask is not None:
+        start_mask = walk_mask
 
     offsets = shape_offsets(shape_type, shape_params, shape_dilation)
     pixel_count = len(offsets)
     max_dy = max(abs(dy) for dy, _dx in offsets)
     max_dx = max(abs(dx) for _dy, dx in offsets)
     if max_dy * 2 >= height or max_dx * 2 >= width:
-        raise ValueError(
-            f"shape parameters are too large for {height}x{width} images"
-        )
+        raise ValueError(f"shape parameters are too large for {height}x{width} images")
 
     coordinates = _walk_coordinates(
         walk_count,
@@ -317,6 +333,7 @@ def random_walk_frames(
         walk_stride,
         seed if seed is not None else -1,
         start_mask,
+        walk_mask,
     )
 
     offsets_array = np.array(offsets, dtype=np.int32).reshape(1, 1, pixel_count, 2)

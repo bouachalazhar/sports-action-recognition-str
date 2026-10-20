@@ -13,8 +13,8 @@ authors:
     given-names: Camille
 repository-code: "https://github.com/bouachalazhar/sports-action-recognition-str"
 license: Apache-2.0
-version: "1.0.0"
-date-released: "2026-10-19"
+version: "1.0.1"
+date-released: "2026-10-20"
 preferred-citation:
   type: article
   title: "Recognition of Action Phases from Spatio-Temporal Intermediate Representations in Amateur Sports Competition Videos"

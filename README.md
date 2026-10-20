@@ -9,9 +9,10 @@ Reference implementation of the method described in:
 
 The method builds a compact 2D image from a short video clip by sampling random
 walks through the video volume. Each walk visits one pixel per frame; the
-visited pixels form the rows of an **STR image**, which a standard 2D
-classifier can process. This avoids 3D convolutions while preserving motion
-information, and keeps inference cheap enough for amateur sports footage.
+visited pixels form the rows of an **STR image** of shape `T x L x C`, which a
+standard 2D classifier can process. This avoids 3D convolutions while
+preserving motion information, and keeps inference cheap enough for amateur
+sports footage.
 
 ## Pipeline
 
@@ -19,8 +20,10 @@ information, and keeps inference cheap enough for amateur sports footage.
    playing field, Farneback optical flow isolates motion, and the intersection
    keeps players moving on the field.
 2. **Random walks** (`str_action.walk`): 8-connected walks of fixed length are
-   sampled in the ROI. Neighbourhood shape, stride, temporal padding and pixel
-   aggregation are configurable.
+   sampled with an active support mask. With `--roi-mode all`, every step of
+   the walk is constrained to the ROI; a step with no valid neighbour
+   self-loops on the current pixel. Neighbourhood shape, stride, temporal
+   padding and pixel aggregation are configurable.
 3. **Classification** (`str_action.models`): ResNet-18, MobileNet V4,
    EfficientNet-V2, ConvNeXt, Swin-V2 and ViT-B/16 are supported. The paper's
    efficiency analysis uses MobileNet V4.
@@ -39,13 +42,15 @@ uv sync --extra dev
 
 ## Quick start
 
-Build STR images from a labelled video tree:
+Build STR images from a labelled video tree. Put each source or match in its
+own group directory so that the grouped split can keep it intact:
 
 ```text
 videos/
   train/
-    action/clip_001.mp4
-    non_action/clip_002.mp4
+    action/match_001/clip_001.mp4
+    action/match_002/clip_002.mp4
+    non_action/match_003/clip_003.mp4
   val/
     ...
 ```
@@ -55,8 +60,11 @@ uv run str-build --source videos/train --destination data/train --walks 1000
 uv run str-build --source videos/val --destination data/val --walks 1000
 ```
 
-This writes `data/train/<label>/<clip>/str/*.png`, together with the ROI
-masks and the sampled points.
+This writes `data/train/<label>/<group>/<clip>/str/*.png`, together with the
+ROI masks and the sampled points. Each PNG is the full `T x L x C` STR image,
+resized to `--image-size` (224 by default), not a single-frame summary. Use
+`--roi-mode none` for the no-ROI ablation; the default `--roi-mode all`
+constrains every step of the walk to the ROI.
 
 Train a classifier:
 
@@ -89,14 +97,16 @@ uv run str-infer match.mp4 \
 
 ## Protocol
 
-The manuscript trains with seeds 17, 29 and 43, splits by clip so that STR
-images from one clip never appear in two splits, and selects the checkpoint
-with the best validation macro-F1. `str-train` implements these three rules:
-the grouped split is deterministic for a given seed, and `best.pt` is written
-whenever validation macro-F1 improves.
+The manuscript trains with seeds 17, 29 and 43 and splits by source group
+(match), so that clips, re-encodings and fragments of the same match never
+appear in two splits. `str-train` groups clips by their directory below the
+label, which is why the `match_XXX` level is required for a faithful protocol.
+A tree with only one group per label is rejected instead of silently leaking
+that group into both partitions.
 
-Reported scores are clip-level. Per-image accuracy overweights clips that
-produce many STR images, so it is not used as a selection criterion.
+Checkpoints are selected on validation macro-F1. Reported scores are
+clip-level: per-image accuracy overweights clips that produce many STR images,
+so it is not used as a selection criterion.
 
 ## Repository layout
 
@@ -117,10 +127,13 @@ tests/          unit and smoke tests
 
 ```bash
 uv run ruff check .
+uv run ruff format --check .
 uv run pytest
+uv build
 ```
 
-The ROI tests generate a synthetic video, so no external data is needed.
+The tests generate synthetic videos, so no external data is needed. CI runs
+lint, format, unit tests and a wheel build.
 
 ## Data and weights
 
