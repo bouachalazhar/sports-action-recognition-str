@@ -168,5 +168,5 @@ Apache-2.0. See [LICENSE](LICENSE).
 }
 ```
 
-The DOI above is the article DOI; the software archive DOI is listed in
-`CITATION.cff` once deposited on Zenodo.
+The DOI above is the article DOI. No software archive DOI has been assigned
+yet; one will be added to `CITATION.cff` only after a Zenodo deposit.
