@@ -13,7 +13,7 @@ authors:
     given-names: Camille
 repository-code: "https://github.com/bouachalazhar/sports-action-recognition-str"
 license: Apache-2.0
-version: "1.0.1"
+version: "1.0.2"
 date-released: "2026-10-20"
 preferred-citation:
   type: article
