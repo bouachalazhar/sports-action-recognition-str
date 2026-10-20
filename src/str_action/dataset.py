@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,23 +12,47 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
+SPLIT_NAMES = {"train", "training", "val", "validation", "test"}
+_GROUP_SUFFIX = re.compile(r"[_-]?\d+$")
 
 
 @dataclass(frozen=True)
 class ClipSample:
-    """One clip and its pre-computed STR images."""
+    """One clip, its source group and its pre-computed STR images."""
 
     clip_id: str
     label: int
     label_name: str
+    group: str
     images: tuple[Path, ...]
 
 
-def discover_clips(root: Path) -> list[ClipSample]:
-    """Scan ``root/<label>/<clip>/str`` or ``root/<split>/<label>/<clip>/str``.
+def _layout_parts(root: Path, directory: Path) -> tuple[str, str]:
+    """Return ``(label_name, group)`` for one clip directory.
 
-    The clip identifier is the path of the clip directory relative to ``root``,
-    so two identical clip names in different splits never collide.
+    Accepted layouts are ``<root>/<label>/<group>/<clip>/str`` and
+    ``<root>/<split>/<label>/<group>/<clip>/str``. A flat clip name is used as
+    its own group only when no group directory is present.
+    """
+    parts = directory.relative_to(root).parts
+    offset = 1 if parts and parts[0].lower() in SPLIT_NAMES else 0
+    if len(parts) <= offset:
+        raise ValueError(f"cannot infer a label from {directory}")
+    label_name = parts[offset]
+    group_parts = parts[offset + 1 : -1]
+    group = "/".join(group_parts) if group_parts else directory.name
+    if group == label_name:
+        group = _GROUP_SUFFIX.sub("", directory.name) or directory.name
+    return label_name, group
+
+
+def discover_clips(
+    root: Path, label_order: list[str] | None = None
+) -> list[ClipSample]:
+    """Scan ``root/<label>/<group>/<clip>/str``.
+
+    ``label_order`` lets evaluation reuse the class order stored in a
+    checkpoint. Unknown labels are rejected instead of being silently remapped.
     """
     root = Path(root)
     if not root.is_dir():
@@ -37,10 +62,7 @@ def discover_clips(root: Path) -> list[ClipSample]:
     if not directories:
         raise FileNotFoundError(f"no STR directory found under {root}")
 
-    labels = sorted({directory.parent.name for directory in directories})
-    label_index = {name: index for index, name in enumerate(labels)}
-
-    clips: list[ClipSample] = []
+    entries: list[tuple[Path, str, str, tuple[Path, ...]]] = []
     for directory in directories:
         images = tuple(
             sorted(
@@ -51,12 +73,29 @@ def discover_clips(root: Path) -> list[ClipSample]:
         )
         if not images:
             continue
-        label_name = directory.parent.name
+        label_name, group = _layout_parts(root, directory)
+        entries.append((directory, label_name, group, images))
+
+    labels = sorted({label_name for _directory, label_name, _group, _images in entries})
+    if label_order is not None:
+        unknown = set(labels) - set(label_order)
+        if unknown:
+            raise ValueError(
+                f"STR labels absent from the checkpoint: {sorted(unknown)}"
+            )
+        ordered_labels = list(label_order)
+    else:
+        ordered_labels = labels
+    label_index = {name: index for index, name in enumerate(ordered_labels)}
+
+    clips: list[ClipSample] = []
+    for directory, label_name, group, images in entries:
         clips.append(
             ClipSample(
                 clip_id=str(directory.relative_to(root)),
                 label=label_index[label_name],
                 label_name=label_name,
+                group=group,
                 images=images,
             )
         )
@@ -77,27 +116,92 @@ def grouped_split(
     validation_fraction: float = 0.2,
     seed: int = 17,
 ) -> tuple[list[ClipSample], list[ClipSample]]:
-    """Split clips into train and validation sets without clip leakage."""
+    """Split globally by source group, without group leakage.
+
+    A group is assigned to exactly one partition, even when it contains clips
+    from several labels. The split also keeps every label in both partitions;
+    if the requested fraction is too small to satisfy that coverage, the
+    validation set grows to the minimum feasible size. A group that is the only
+    source for a label cannot be split without leakage, so it raises instead of
+    silently producing a fake validation set.
+    """
     if not 0.0 < validation_fraction < 1.0:
         raise ValueError("validation_fraction must lie strictly between 0 and 1")
+    if not clips:
+        raise ValueError("clip list is empty")
 
-    by_label: dict[int, list[ClipSample]] = {}
-    for clip in clips:
-        by_label.setdefault(clip.label, []).append(clip)
+    groups = sorted({clip.group for clip in clips})
+    labels = sorted({clip.label for clip in clips})
+    group_labels = {
+        group: {clip.label for clip in clips if clip.group == group} for group in groups
+    }
+    for label in labels:
+        label_groups = [group for group in groups if label in group_labels[group]]
+        if len(label_groups) < 2:
+            raise ValueError(
+                f"label {label} has only one source group; provide at least two "
+                "groups to build a leak-free train/validation split"
+            )
 
     generator = random.Random(seed)
-    train: list[ClipSample] = []
-    validation: list[ClipSample] = []
-    for label in sorted(by_label):
-        samples = list(by_label[label])
-        generator.shuffle(samples)
-        cut = max(1, int(round(len(samples) * (1.0 - validation_fraction))))
-        cut = min(cut, len(samples) - 1) if len(samples) > 1 else cut
-        train.extend(samples[:cut])
-        validation.extend(samples[cut:])
+    shuffled_groups = list(groups)
+    generator.shuffle(shuffled_groups)
+    shuffled_labels = list(labels)
+    generator.shuffle(shuffled_labels)
 
-    if not validation:
-        validation = [train.pop()]
+    target = max(1, int(round(len(groups) * validation_fraction)))
+    target = min(target, len(groups) - 1)
+    selected: set[str] = set()
+
+    def train_covers_all_labels() -> bool:
+        train_labels = {clip.label for clip in clips if clip.group not in selected}
+        return set(labels) <= train_labels
+
+    # First make sure that validation covers every label. A shared group can
+    # cover several labels at once, so this may select fewer than len(labels).
+    for label in shuffled_labels:
+        if any(label in group_labels[group] for group in selected):
+            continue
+        uncovered = set(labels) - {
+            covered for group in selected for covered in group_labels[group]
+        }
+        candidates = [
+            group
+            for group in shuffled_groups
+            if label in group_labels[group] and group not in selected
+        ]
+        generator.shuffle(candidates)
+        candidates.sort(key=lambda group: -len(group_labels[group] & uncovered))
+        for group in candidates:
+            selected.add(group)
+            if train_covers_all_labels():
+                break
+            selected.remove(group)
+        else:
+            raise ValueError(
+                f"cannot cover label {label} in both partitions; "
+                "provide more source groups"
+            )
+
+    # Fill the validation set towards the requested fraction, but never remove
+    # a label from the training partition.
+    for group in shuffled_groups:
+        if len(selected) >= target:
+            break
+        if group in selected:
+            continue
+        selected.add(group)
+        if not train_covers_all_labels():
+            selected.remove(group)
+
+    validation = [clip for clip in clips if clip.group in selected]
+    train = [clip for clip in clips if clip.group not in selected]
+    if not train or not validation:
+        raise ValueError("the requested split produced an empty partition")
+    if {clip.label for clip in train} != set(labels):
+        raise ValueError("grouped split removed a label from training")
+    if {clip.label for clip in validation} != set(labels):
+        raise ValueError("grouped split could not cover every label in validation")
     return sorted(train, key=lambda clip: clip.clip_id), sorted(
         validation, key=lambda clip: clip.clip_id
     )

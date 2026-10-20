@@ -79,6 +79,29 @@ def test_random_walk_starts_inside_mask() -> None:
     assert all(8 <= row < 12 and 8 <= column < 12 for row, column in starts)
 
 
+def test_random_walk_stays_inside_mask_at_every_step() -> None:
+    video = np.zeros((6, 16, 16, 3), dtype=np.uint8)
+    mask = np.zeros((16, 16), dtype=np.uint8)
+    mask[4:10, 4:10] = 255
+    _images, points = random_walk_frames(video, 16, 24, walk_mask=mask, seed=11)
+    assert all(4 <= row < 10 and 4 <= column < 10 for row, column in points)
+
+
+def test_random_walk_self_loops_on_a_single_pixel_mask() -> None:
+    video = np.zeros((6, 16, 16, 3), dtype=np.uint8)
+    mask = np.zeros((16, 16), dtype=np.uint8)
+    mask[5, 5] = 255
+    _images, points = random_walk_frames(video, 4, 12, walk_mask=mask, seed=11)
+    assert points == [(5, 5)] * 48
+
+
+def test_temporal_pad_bounce_survives_one_frame() -> None:
+    video = np.zeros((1, 4, 4, 3), dtype=np.uint8)
+    padded = temporal_pad(video, 7, "bounce")
+    assert padded.shape[0] == 7
+    assert np.array_equal(padded, np.repeat(video, 7, axis=0))
+
+
 def test_random_walk_rejects_empty_mask() -> None:
     video = np.zeros((4, 16, 16, 3), dtype=np.uint8)
     with pytest.raises(ValueError):

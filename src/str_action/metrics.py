@@ -25,9 +25,7 @@ def confusion_matrix(
     return matrix
 
 
-def macro_f1(
-    targets: np.ndarray, predictions: np.ndarray, num_classes: int
-) -> float:
+def macro_f1(targets: np.ndarray, predictions: np.ndarray, num_classes: int) -> float:
     """Unweighted mean of the per-class F1 scores."""
     matrix = confusion_matrix(targets, predictions, num_classes)
     scores: list[float] = []
@@ -37,8 +35,8 @@ def macro_f1(
         false_negative = matrix[index, :].sum() - true_positive
         denominator = 2 * true_positive + false_positive + false_negative
         if denominator == 0:
-            # A class absent from both target and prediction contributes a
-            # neutral score instead of an arbitrary zero.
+            # A class absent from both target and prediction has no defined
+            # F1; scoring it zero keeps the macro average conservative.
             scores.append(0.0)
         else:
             scores.append(2.0 * true_positive / denominator)

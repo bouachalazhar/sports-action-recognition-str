@@ -62,7 +62,7 @@ def train(args: argparse.Namespace) -> Path:
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.workers,
-        drop_last=len(train_dataset) >= args.batch_size,
+        drop_last=len(train_dataset) > args.batch_size,
     )
     validation_loader = DataLoader(
         validation_dataset,
@@ -128,9 +128,9 @@ def train(args: argparse.Namespace) -> Path:
                     "model_name": args.model,
                     "class_names": classes,
                     "image_size": args.image_size,
+                    "dropout": args.dropout,
                     "epoch": epoch,
                     "val_macro_f1": best_macro_f1,
-                    "args": vars(args),
                 },
                 best_path,
             )

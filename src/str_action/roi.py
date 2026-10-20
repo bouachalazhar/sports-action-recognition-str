@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+
 import av
 import cv2
 import numpy as np
@@ -47,28 +49,38 @@ def optical_flow(path: str) -> np.ndarray:
 
 def green_chromaticity(path: str) -> tuple[np.ndarray, np.ndarray]:
     """Return the field mask and the player mask of a video."""
-    container = av.open(path)
-    frames = [frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)]
-    if not frames:
-        raise ValueError("no frame could be decoded")
+    with av.open(path) as container:
+        stream = container.decode(video=0)
+        try:
+            first = next(stream)
+        except StopIteration as error:
+            raise ValueError("no frame could be decoded") from error
 
-    alpha = 0.5
-    height, width, _channels = frames[0].shape
-    kernel_size = int(alpha * np.sqrt(height**2 + width**2) / 100)
-    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+        alpha = 0.5
+        height, width, _channels = first.to_ndarray(format="rgb24").shape
+        kernel_size = max(3, int(alpha * np.sqrt(height**2 + width**2) / 100))
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+        kernel = np.ones((kernel_size, kernel_size), np.uint8)
 
-    def chromaticity(image: np.ndarray) -> np.ndarray:
-        opened = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel).astype(np.float32)
-        total = np.sum(opened, axis=-1)
-        green = np.zeros((height, width), dtype=np.float32)
-        valid = total != 0
-        green[valid] = opened[..., 1][valid] / total[valid]
-        return (green * 255).astype(np.uint8)
+        def chromaticity(image: np.ndarray) -> np.ndarray:
+            opened = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel).astype(np.float32)
+            total = np.sum(opened, axis=-1)
+            green = np.zeros((height, width), dtype=np.float32)
+            valid = total != 0
+            green[valid] = opened[..., 1][valid] / total[valid]
+            return (green * 255).astype(np.uint8)
 
-    field = np.zeros((height, width), dtype=np.uint8)
-    for image in frames[::30]:
-        _, otsu = cv2.threshold(chromaticity(image), 0, 255, cv2.THRESH_OTSU)
-        field = cv2.bitwise_or(field, otsu)
+        field = np.zeros((height, width), dtype=np.uint8)
+        players = np.zeros((height, width), dtype=np.uint8)
+        for index, frame in enumerate(itertools.chain((first,), stream)):
+            image = frame.to_ndarray(format="rgb24")
+            if index % 30 == 0:
+                _, otsu = cv2.threshold(chromaticity(image), 0, 255, cv2.THRESH_OTSU)
+                field = cv2.bitwise_or(field, otsu)
+            if index % 45 == 0:
+                _, otsu = cv2.threshold(~chromaticity(image), 0, 255, cv2.THRESH_OTSU)
+                players = cv2.bitwise_or(players, otsu)
 
     labels_count, labels, stats, _centroids = cv2.connectedComponentsWithStats(
         field, connectivity=8
@@ -81,12 +93,6 @@ def green_chromaticity(path: str) -> tuple[np.ndarray, np.ndarray]:
 
     closing = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (12, 12))
     field_closed = cv2.morphologyEx(component, cv2.MORPH_CLOSE, closing)
-
-    players = np.zeros((height, width), dtype=np.uint8)
-    for image in frames[::45]:
-        _, otsu = cv2.threshold(~chromaticity(image), 0, 255, cv2.THRESH_OTSU)
-        players = cv2.bitwise_or(players, otsu)
-
     return field_closed, players
 
 
