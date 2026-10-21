@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.1 — 2026-10-21
+
+Patch release.
+
+- Process the 1000 inference walks in bounded forward passes instead of
+  materialising one 1000-image tensor. `str-infer` accepts `--batch-size`
+  (default 32) and records the value in its report.
+- Added a regression test comparing batched and single-pass probabilities.
+
 ## 1.1.0 — 2026-10-21
 
 Protocol-fidelity release.

@@ -23,6 +23,8 @@ from str_action.walk import (
     resolve_temporal_target_length,
 )
 
+DEFAULT_INFERENCE_BATCH_SIZE = 32
+
 
 def read_video(path: Path) -> np.ndarray:
     """Decode a video into an RGB array of shape ``(T, H, W, C)``."""
@@ -40,6 +42,42 @@ def _checkpoint_representation(checkpoint: dict[str, object]) -> dict[str, objec
     return dict(payload) if isinstance(payload, dict) else {}
 
 
+def predict_probabilities(
+    images: np.ndarray,
+    model: torch.nn.Module,
+    *,
+    image_size: int,
+    batch_size: int,
+    device: torch.device,
+) -> np.ndarray:
+    """Classify STR images in bounded forward passes."""
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive")
+    mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+    probabilities: list[torch.Tensor] = []
+    with torch.no_grad():
+        for start in range(0, len(images), batch_size):
+            chunk = images[start : start + batch_size]
+            resized = np.stack(
+                [
+                    cv2.resize(
+                        image,
+                        (image_size, image_size),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
+                    for image in chunk
+                ]
+            )
+            batch = torch.from_numpy(
+                resized.transpose(0, 3, 1, 2).astype(np.float32) / 255.0
+            ).contiguous()
+            batch = (batch - mean) / std
+            logits = model(batch.to(device))
+            probabilities.append(torch.softmax(logits, dim=1).cpu())
+    return torch.cat(probabilities, dim=0).numpy()
+
+
 def classify_video(
     video_path: Path,
     checkpoint_path: Path,
@@ -52,6 +90,7 @@ def classify_video(
     clip_aggregation: str | None = None,
     seed: int = 17,
     device: str = "auto",
+    batch_size: int = DEFAULT_INFERENCE_BATCH_SIZE,
     output_dir: Path | None = None,
     allow_legacy_checkpoint: bool = False,
 ) -> dict[str, object]:
@@ -134,26 +173,13 @@ def classify_video(
         seed=seed,
     )
 
-    resized = np.stack(
-        [
-            cv2.resize(
-                image,
-                (resolved_image_size, resolved_image_size),
-                interpolation=cv2.INTER_LINEAR,
-            )
-            for image in images
-        ]
+    probabilities = predict_probabilities(
+        images,
+        model,
+        image_size=resolved_image_size,
+        batch_size=batch_size,
+        device=torch_device,
     )
-    batch = torch.from_numpy(
-        resized.transpose(0, 3, 1, 2).astype(np.float32) / 255.0
-    ).contiguous()
-    mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
-    batch = (batch - mean) / std
-
-    with torch.no_grad():
-        logits = model(batch.to(torch_device))
-        probabilities = torch.softmax(logits, dim=1).cpu().numpy()
 
     mean_probabilities = probabilities.mean(axis=0)
     clip_indices = np.zeros(probabilities.shape[0], dtype=np.int64)
@@ -190,6 +216,7 @@ def classify_video(
         "image_size": resolved_image_size,
         "roi_mode": resolved_roi_mode,
         "temporal_policy": resolved_temporal_policy,
+        "inference_batch_size": batch_size,
         "points": len(points),
     }
     return report
@@ -237,6 +264,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="clip decision rule; defaults to the checkpoint metadata",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_INFERENCE_BATCH_SIZE,
+        help="number of STR images per forward pass",
+    )
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument(
         "--allow-legacy-checkpoint",
@@ -272,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
         clip_aggregation=args.clip_aggregation,
         seed=args.seed,
         device=args.device,
+        batch_size=args.batch_size,
         output_dir=args.output_dir,
         allow_legacy_checkpoint=args.allow_legacy_checkpoint,
     )

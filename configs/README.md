@@ -26,8 +26,9 @@ reuse a profile for a quick ablation without editing the file.
   fraction.
 - `evaluate`: evaluation batch size and aggregation. The checkpoint metadata is
   used when a value is omitted.
-- `inference`: inference seed and optional overrides. Representation values are
-  read from the checkpoint unless explicitly overridden.
+- `inference`: inference seed, the number of STR images per forward pass
+  (`batch_size`) and optional overrides. Representation values are read from the
+  checkpoint unless explicitly overridden.
 
 ## Validation split
 
