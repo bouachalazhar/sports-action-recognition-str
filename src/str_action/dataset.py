@@ -83,6 +83,11 @@ def discover_clips(
             raise ValueError(
                 f"STR labels absent from the checkpoint: {sorted(unknown)}"
             )
+        missing = set(label_order) - set(labels)
+        if missing:
+            raise ValueError(
+                f"checkpoint labels absent from the STR data: {sorted(missing)}"
+            )
         ordered_labels = list(label_order)
     else:
         ordered_labels = labels
@@ -113,7 +118,7 @@ def label_names(clips: list[ClipSample]) -> list[str]:
 
 def grouped_split(
     clips: list[ClipSample],
-    validation_fraction: float = 0.2,
+    validation_fraction: float = 0.1,
     seed: int = 17,
 ) -> tuple[list[ClipSample], list[ClipSample]]:
     """Split globally by source group, without group leakage.

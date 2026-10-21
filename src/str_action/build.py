@@ -19,10 +19,22 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
+from str_action.config import (
+    REPRESENTATION_DEFAULTS,
+    apply_defaults,
+    config_path,
+    load_config,
+    representation,
+    section,
+)
 from str_action.infer import read_video
 from str_action.roi import roi_str
 from str_action.utils import seed_everything
-from str_action.walk import random_walk_frames
+from str_action.walk import (
+    TEMPORAL_POLICIES,
+    random_walk_frames,
+    resolve_temporal_target_length,
+)
 
 VIDEO_SUFFIXES = {".mp4", ".avi", ".mkv", ".mov"}
 
@@ -36,8 +48,12 @@ def build_split(
     roi_mode: str,
     image_size: int,
     seed: int,
+    temporal_policy: str = "preserve",
+    save_points: bool = False,
 ) -> int:
     """Convert every video of one source tree into full STR images."""
+    if temporal_policy not in TEMPORAL_POLICIES:
+        raise ValueError(f"unknown temporal policy: {temporal_policy}")
     videos = sorted(
         path for path in source.rglob("*") if path.suffix.lower() in VIDEO_SUFFIXES
     )
@@ -61,11 +77,14 @@ def build_split(
                 RuntimeWarning,
                 stacklevel=2,
             )
+        target_length = resolve_temporal_target_length(
+            video.shape[0], walk_length, temporal_policy
+        )
         images, points = random_walk_frames(
             video,
             walk_count=walks,
             walk_length=walk_length,
-            temporal_target_length=max(video.shape[0], walk_length // 2 + 1),
+            temporal_target_length=target_length,
             temporal_pad_mode="duplicate",
             start_mask=roi if use_roi else None,
             walk_mask=roi if use_roi else None,
@@ -82,28 +101,68 @@ def build_split(
                 str(str_dir / f"{index}.png"),
                 cv2.cvtColor(resized, cv2.COLOR_RGB2BGR),
             )
-        (folder / "points.json").write_text(json.dumps(points), encoding="utf-8")
+        if save_points:
+            (folder / "points.json").write_text(json.dumps(points), encoding="utf-8")
         written += 1
 
     return written
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Command-line entry point."""
+def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--destination", type=Path, required=True)
-    parser.add_argument("--walks", type=int, default=1000)
-    parser.add_argument("--walk-length", type=int, default=112)
-    parser.add_argument("--image-size", type=int, default=224)
+    parser.add_argument(
+        "--walks",
+        type=int,
+        default=REPRESENTATION_DEFAULTS["walks"],
+        help="number of STR images per video",
+    )
+    parser.add_argument(
+        "--walk-length",
+        type=int,
+        default=REPRESENTATION_DEFAULTS["walk_length"],
+        help="number of pixels visited by one walk",
+    )
+    parser.add_argument(
+        "--image-size", type=int, default=REPRESENTATION_DEFAULTS["image_size"]
+    )
     parser.add_argument(
         "--roi-mode",
         choices=("all", "none"),
-        default="all",
+        default=REPRESENTATION_DEFAULTS["roi_mode"],
         help="apply the active ROI mask to every walk, or use the full frame",
     )
+    parser.add_argument(
+        "--temporal-policy",
+        choices=TEMPORAL_POLICIES,
+        default=REPRESENTATION_DEFAULTS["temporal_policy"],
+        help="preserve the decoded temporal axis, or pad clips shorter than L/2",
+    )
+    parser.add_argument(
+        "--save-points",
+        action=argparse.BooleanOptionalAction,
+        default=REPRESENTATION_DEFAULTS["save_points"],
+        help="write the sampled walk coordinates to points.json",
+    )
     parser.add_argument("--seed", type=int, default=17)
-    args = parser.parse_args(argv)
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse arguments, applying YAML defaults before explicit flags."""
+    parser = build_parser()
+    config = load_config(config_path(argv))
+    apply_defaults(parser, representation(config), known_only=True)
+    apply_defaults(parser, section(config, "build"))
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point."""
+    args = parse_args(argv)
 
     seed_everything(args.seed)
     count = build_split(
@@ -114,6 +173,8 @@ def main(argv: list[str] | None = None) -> int:
         roi_mode=args.roi_mode,
         image_size=args.image_size,
         seed=args.seed,
+        temporal_policy=args.temporal_policy,
+        save_points=args.save_points,
     )
     print(f"converted {count} videos into {args.destination}")
     return 0

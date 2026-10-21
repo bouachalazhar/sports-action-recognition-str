@@ -81,8 +81,10 @@ def test_discover_clips_reuses_checkpoint_label_order(tmp_path: Path) -> None:
     clips = discover_clips(root, label_order=["non_action", "action"])
     by_name = {clip.label_name: clip.label for clip in clips}
     assert by_name == {"non_action": 0, "action": 1}
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="absent from the checkpoint"):
         discover_clips(root, label_order=["action"])
+    with pytest.raises(ValueError, match="checkpoint labels absent"):
+        discover_clips(root, label_order=["non_action", "action", "hockey"])
 
 
 def test_grouped_split_rejects_single_source_group(tmp_path: Path) -> None:

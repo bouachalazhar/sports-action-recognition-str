@@ -11,34 +11,129 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+from str_action.config import (
+    REPRESENTATION_DEFAULTS,
+    apply_defaults,
+    config_path,
+    load_config,
+    representation,
+    section,
+)
 from str_action.dataset import (
+    ClipSample,
     STRImageDataset,
     discover_clips,
     grouped_split,
     label_names,
 )
-from str_action.evaluate import evaluate_model
+from str_action.evaluate import CLIP_AGGREGATIONS, evaluate_model
 from str_action.models import SUPPORTED_MODELS, build_model, count_parameters
 from str_action.utils import resolve_device, seed_everything, write_json
+from str_action.walk import TEMPORAL_POLICIES
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse the training command line."""
+def class_weights(
+    clips: list[ClipSample], num_classes: int, mode: str = "balanced"
+) -> torch.Tensor | None:
+    """Return inverse-frequency class weights, or ``None`` when disabled.
+
+    Counts are taken at clip level because every clip contributes the same
+    target to the clip-level decision, even when it contains a different number
+    of STR images.
+    """
+    if mode == "none":
+        return None
+    if mode != "balanced":
+        raise ValueError(f"unknown class-weight mode: {mode}")
+    counts = torch.bincount(
+        torch.tensor([clip.label for clip in clips], dtype=torch.long),
+        minlength=num_classes,
+    ).to(torch.float64)
+    if torch.any(counts == 0):
+        raise ValueError("every class must have at least one training clip")
+    weights = counts.sum() / (num_classes * counts)
+    return weights.to(torch.float32)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the training command-line parser."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("runs/str"))
     parser.add_argument("--model", choices=SUPPORTED_MODELS, default="resnet18")
-    parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--learning-rate", type=float, default=3e-4)
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
-    parser.add_argument("--image-size", type=int, default=224)
-    parser.add_argument("--validation-fraction", type=float, default=0.2)
+    parser.add_argument(
+        "--image-size", type=int, default=REPRESENTATION_DEFAULTS["image_size"]
+    )
+    parser.add_argument(
+        "--validation-fraction",
+        type=float,
+        default=0.1,
+        help=(
+            "fraction of source groups held out for validation; "
+            "the test tree is external"
+        ),
+    )
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--pretrained", action="store_true")
     parser.add_argument("--dropout", type=float, default=0.0)
+    parser.add_argument(
+        "--class-weights",
+        choices=("none", "balanced"),
+        default="balanced",
+        help="weight the cross-entropy by inverse class frequency",
+    )
+    parser.add_argument(
+        "--clip-aggregation",
+        choices=CLIP_AGGREGATIONS,
+        default="vote",
+        help="clip decision rule used for validation and model selection",
+    )
+    parser.add_argument(
+        "--early-stopping-patience",
+        type=int,
+        default=10,
+        help="stop after this many epochs without a validation improvement; 0 disables",
+    )
+    parser.add_argument(
+        "--walks",
+        type=int,
+        default=REPRESENTATION_DEFAULTS["walks"],
+        help="STR metadata stored in the checkpoint",
+    )
+    parser.add_argument(
+        "--walk-length",
+        type=int,
+        default=REPRESENTATION_DEFAULTS["walk_length"],
+        help="STR metadata stored in the checkpoint",
+    )
+    parser.add_argument(
+        "--roi-mode",
+        choices=("all", "none"),
+        default=REPRESENTATION_DEFAULTS["roi_mode"],
+        help="STR metadata stored in the checkpoint",
+    )
+    parser.add_argument(
+        "--temporal-policy",
+        choices=TEMPORAL_POLICIES,
+        default=REPRESENTATION_DEFAULTS["temporal_policy"],
+        help="STR metadata stored in the checkpoint",
+    )
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse arguments, applying YAML defaults before explicit flags."""
+    parser = build_parser()
+    config = load_config(config_path(argv))
+    apply_defaults(parser, representation(config), known_only=True)
+    apply_defaults(parser, section(config, "train"))
     return parser.parse_args(argv)
 
 
@@ -77,14 +172,36 @@ def train(args: argparse.Namespace) -> Path:
         pretrained=args.pretrained,
         dropout=args.dropout,
     ).to(device)
-    criterion = nn.CrossEntropyLoss()
+    weights = class_weights(train_clips, len(classes), args.class_weights)
+    criterion = nn.CrossEntropyLoss(
+        weight=None if weights is None else weights.to(device)
+    )
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
     )
 
     history: list[dict[str, float]] = []
     best_macro_f1 = -1.0
+    best_epoch = 0
     best_path = args.output_dir / "best.pt"
+    representation_metadata = {
+        "walks": args.walks,
+        "walk_length": args.walk_length,
+        "image_size": args.image_size,
+        "roi_mode": args.roi_mode,
+        "temporal_policy": args.temporal_policy,
+    }
+    training_metadata = {
+        "class_weights": args.class_weights,
+        "clip_aggregation": args.clip_aggregation,
+        "early_stopping_patience": args.early_stopping_patience,
+        "seed": args.seed,
+        "validation_fraction": args.validation_fraction,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "weight_decay": args.weight_decay,
+    }
 
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -109,6 +226,7 @@ def train(args: argparse.Namespace) -> Path:
             clip_labels=validation_dataset.clip_labels,
             device=device,
             class_names=classes,
+            aggregation=args.clip_aggregation,
         )
         epoch_report = {
             "epoch": epoch,
@@ -122,6 +240,7 @@ def train(args: argparse.Namespace) -> Path:
 
         if report["macro_f1"] > best_macro_f1:
             best_macro_f1 = report["macro_f1"]
+            best_epoch = epoch
             torch.save(
                 {
                     "state_dict": model.state_dict(),
@@ -131,9 +250,17 @@ def train(args: argparse.Namespace) -> Path:
                     "dropout": args.dropout,
                     "epoch": epoch,
                     "val_macro_f1": best_macro_f1,
+                    "representation": representation_metadata,
+                    "training": training_metadata,
                 },
                 best_path,
             )
+
+        if (
+            args.early_stopping_patience > 0
+            and epoch - best_epoch >= args.early_stopping_patience
+        ):
+            break
 
     write_json(
         args.output_dir / "history.json",
@@ -143,7 +270,11 @@ def train(args: argparse.Namespace) -> Path:
             "train_clips": len(train_clips),
             "validation_clips": len(validation_clips),
             "class_names": classes,
+            "representation": representation_metadata,
+            "class_weight_mode": args.class_weights,
+            "clip_aggregation": args.clip_aggregation,
             "history": history,
+            "best_epoch": best_epoch,
             "best_val_macro_f1": best_macro_f1,
             "checkpoint": str(best_path),
         },

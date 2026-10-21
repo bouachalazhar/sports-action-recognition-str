@@ -77,3 +77,34 @@ def test_grouped_split_keeps_match_groups_together(tmp_path: Path) -> None:
     )
     assert {clip.label_name for clip in train} == {"action", "no_action"}
     assert {clip.label_name for clip in validation} == {"action", "no_action"}
+
+
+def test_points_are_opt_in(tmp_path: Path) -> None:
+    source = tmp_path / "videos"
+    _write_video(source / "action" / "match_a" / "clip.mp4")
+    destination = tmp_path / "str"
+
+    build_split(
+        source,
+        destination,
+        walks=2,
+        walk_length=8,
+        roi_mode="none",
+        image_size=16,
+        seed=3,
+    )
+    clip_dir = destination / "action" / "match_a" / "clip"
+    assert not (clip_dir / "points.json").exists()
+
+    build_split(
+        source,
+        destination,
+        walks=2,
+        walk_length=8,
+        roi_mode="none",
+        image_size=16,
+        seed=3,
+        save_points=True,
+    )
+    points = (clip_dir / "points.json").read_text(encoding="utf-8")
+    assert points.startswith("[[")
