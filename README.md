@@ -141,6 +141,9 @@ uv run str-infer match.mp4 \
   --output-dir runs/inference
 ```
 
+The default 1000 walks are processed in bounded forward passes
+(`--batch-size 32`) so inference does not require a single 1000-image tensor.
+
 ## Protocol and manuscript alignment
 
 | Item | Manuscript / paper profile | Implementation |

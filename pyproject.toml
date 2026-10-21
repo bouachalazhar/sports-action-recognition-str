@@ -1,6 +1,6 @@
 [project]
 name = "str-action"
-version = "1.1.0"
+version = "1.1.1"
 description = "Recognition of action phases from spatio-temporal intermediate representations in amateur sports competition videos"
 readme = "README.md"
 authors = [{ name = "Lazhar Bouacha", email = "bouacha.lazhar@icloud.com" }]

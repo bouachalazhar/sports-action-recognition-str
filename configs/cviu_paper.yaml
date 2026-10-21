@@ -34,4 +34,5 @@ evaluate:
 
 inference:
   seed: 17
+  batch_size: 32
   clip_aggregation: vote
