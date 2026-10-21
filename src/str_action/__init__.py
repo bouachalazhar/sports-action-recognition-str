@@ -10,6 +10,7 @@ this repository:
 
 Modules
 -------
+config    YAML protocol loading and command-line precedence.
 walk     Random walk sampling over a video volume.
 roi      Region-of-interest extraction from green chromaticity and optical flow.
 dataset  STR image datasets and grouping utilities.
@@ -23,4 +24,4 @@ build    STR dataset construction from a labelled video tree.
 from __future__ import annotations
 
 __all__ = ["__version__"]
-__version__ = "1.0.2"
+__version__ = "1.1.0"

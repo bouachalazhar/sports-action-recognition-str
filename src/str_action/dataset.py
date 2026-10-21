@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,6 +84,14 @@ def discover_clips(
             raise ValueError(
                 f"STR labels absent from the checkpoint: {sorted(unknown)}"
             )
+        missing = set(label_order) - set(labels)
+        if missing:
+            warnings.warn(
+                "checkpoint labels absent from the STR data: "
+                f"{sorted(missing)}; their recall and F1 are reported as zero",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         ordered_labels = list(label_order)
     else:
         ordered_labels = labels
@@ -113,7 +122,7 @@ def label_names(clips: list[ClipSample]) -> list[str]:
 
 def grouped_split(
     clips: list[ClipSample],
-    validation_fraction: float = 0.2,
+    validation_fraction: float = 0.1,
     seed: int = 17,
 ) -> tuple[list[ClipSample], list[ClipSample]]:
     """Split globally by source group, without group leakage.

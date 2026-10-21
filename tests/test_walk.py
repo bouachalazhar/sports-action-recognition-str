@@ -8,6 +8,7 @@ import pytest
 from str_action.walk import (
     aggregate_pixels,
     random_walk_frames,
+    resolve_temporal_target_length,
     shape_offsets,
     temporal_pad,
 )
@@ -114,3 +115,17 @@ def test_random_walk_rejects_oversized_shape() -> None:
         random_walk_frames(
             video, 1, 4, shape_type="cross", shape_params={"arm_length": 10}
         )
+
+
+def test_preserve_policy_keeps_the_decoded_frame_count() -> None:
+    assert resolve_temporal_target_length(90, 224, "preserve") == 90
+
+
+def test_min_half_walk_is_an_explicit_legacy_policy() -> None:
+    assert resolve_temporal_target_length(90, 224, "min-half-walk") == 113
+    assert resolve_temporal_target_length(400, 224, "min-half-walk") == 400
+
+
+def test_temporal_policy_rejects_unknown_values() -> None:
+    with pytest.raises(ValueError, match="unknown temporal policy"):
+        resolve_temporal_target_length(90, 224, "stretch")

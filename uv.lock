@@ -652,7 +652,7 @@ wheels = [
 
 [[package]]
 name = "str-action"
-version = "1.0.2"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "av" },
@@ -660,6 +660,7 @@ dependencies = [
     { name = "numpy" },
     { name = "opencv-python-headless" },
     { name = "pillow" },
+    { name = "pyyaml" },
     { name = "timm" },
     { name = "torch" },
     { name = "torchvision" },
@@ -680,6 +681,7 @@ requires-dist = [
     { name = "opencv-python-headless", specifier = ">=4.13.0,<5" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "timm", specifier = ">=1.0.12,<2" },
     { name = "torch", specifier = ">=2.8,<2.14" },

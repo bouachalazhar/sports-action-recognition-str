@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from str_action.checkpoints import load_checkpoint
 from str_action.train import main
 
 
@@ -47,3 +48,15 @@ def test_training_runs_end_to_end(tmp_path: Path) -> None:
     assert exit_code == 0
     assert (output / "best.pt").is_file()
     assert (output / "history.json").is_file()
+
+    checkpoint = load_checkpoint(output / "best.pt")
+    assert checkpoint["representation"] == {
+        "walks": 1000,
+        "walk_length": 224,
+        "image_size": 32,
+        "roi_mode": "all",
+        "temporal_policy": "preserve",
+    }
+    assert checkpoint["training"]["class_weights"] == "balanced"
+    assert checkpoint["training"]["clip_aggregation"] == "vote"
+    assert checkpoint["training"]["validation_fraction"] == 0.1

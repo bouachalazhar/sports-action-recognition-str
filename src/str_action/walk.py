@@ -156,6 +156,30 @@ def temporal_pad(video: np.ndarray, target_length: int, mode: str) -> np.ndarray
     raise ValueError(f"unknown temporal_pad mode: {mode}")
 
 
+TEMPORAL_POLICIES = ("preserve", "min-half-walk")
+
+
+def resolve_temporal_target_length(
+    total_frames: int, walk_length: int, policy: str
+) -> int:
+    """Return the frame count used to build one STR image.
+
+    ``preserve`` keeps the decoded temporal axis unchanged. ``min-half-walk``
+    is the legacy convenience policy that pads very short clips to at least half
+    the walk length; it is not the manuscript protocol when ``L=224`` and a
+    three-second clip has 90 frames.
+    """
+    if total_frames <= 0:
+        raise ValueError("a clip must contain at least one frame")
+    if walk_length <= 0:
+        raise ValueError("walk_length must be positive")
+    if policy == "preserve":
+        return total_frames
+    if policy == "min-half-walk":
+        return max(total_frames, walk_length // 2 + 1)
+    raise ValueError(f"unknown temporal policy: {policy}")
+
+
 def aggregate_pixels(pixels: np.ndarray, mode: str) -> np.ndarray:
     """Aggregate the pixels sampled by one walk into one value per frame.
 
@@ -358,8 +382,10 @@ def random_walk_frames(
 
 
 __all__ = [
+    "TEMPORAL_POLICIES",
     "aggregate_pixels",
     "random_walk_frames",
+    "resolve_temporal_target_length",
     "shape_offsets",
     "temporal_pad",
 ]
