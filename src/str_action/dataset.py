@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -85,8 +86,11 @@ def discover_clips(
             )
         missing = set(label_order) - set(labels)
         if missing:
-            raise ValueError(
-                f"checkpoint labels absent from the STR data: {sorted(missing)}"
+            warnings.warn(
+                "checkpoint labels absent from the STR data: "
+                f"{sorted(missing)}; their recall and F1 are reported as zero",
+                RuntimeWarning,
+                stacklevel=2,
             )
         ordered_labels = list(label_order)
     else:

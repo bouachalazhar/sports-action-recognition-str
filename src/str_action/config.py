@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from yaml.nodes import MappingNode
 
 CONFIG_SECTIONS = ("representation", "build", "train", "evaluate", "inference")
 REPRESENTATION_DEFAULTS: dict[str, Any] = {
@@ -24,6 +25,21 @@ REPRESENTATION_DEFAULTS: dict[str, Any] = {
     "temporal_policy": "preserve",
     "save_points": False,
 }
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects repeated mapping keys."""
+
+    def construct_mapping(
+        self, node: MappingNode, deep: bool = False
+    ) -> dict[Any, Any]:
+        keys: list[Any] = []
+        for key_node, _value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in keys:
+                raise ValueError(f"duplicate YAML key: {key!r}")
+            keys.append(key)
+        return super().construct_mapping(node, deep=deep)
 
 
 def config_path(argv: list[str] | None) -> Path | None:
@@ -42,7 +58,7 @@ def load_config(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {}
     with Path(path).open(encoding="utf-8") as handle:
-        payload = yaml.safe_load(handle) or {}
+        payload = yaml.load(handle, Loader=_UniqueKeyLoader) or {}
     if not isinstance(payload, dict):
         raise ValueError(f"configuration must be a mapping: {path}")
     unknown = set(payload) - set(CONFIG_SECTIONS)

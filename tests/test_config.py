@@ -46,6 +46,11 @@ def test_representation_defaults_are_general_and_do_not_write_points() -> None:
     assert REPRESENTATION_DEFAULTS["save_points"] is False
 
 
+def test_duplicate_yaml_keys_are_rejected() -> None:
+    with pytest.raises(ValueError, match="duplicate YAML key"):
+        load_config_from_text("train:\n  epochs: 1\n  epochs: 2\n")
+
+
 def test_unknown_sections_and_keys_are_rejected() -> None:
     with pytest.raises(ValueError, match="unknown configuration sections"):
         load_config_from_text("unknown: value\n")

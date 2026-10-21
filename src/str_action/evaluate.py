@@ -171,8 +171,11 @@ def main(argv: list[str] | None = None) -> int:
     model_name = checkpoint["model_name"]
     classes: list[str] = checkpoint["class_names"]
     image_size = args.image_size or int(checkpoint.get("image_size", 224))
-    aggregation = args.clip_aggregation or checkpoint.get("training", {}).get(
-        "clip_aggregation", "vote"
+    training_metadata = checkpoint.get("training", {})
+    aggregation = args.clip_aggregation or (
+        training_metadata.get("clip_aggregation", "vote")
+        if isinstance(training_metadata, dict)
+        else "vote"
     )
 
     model = build_model(
