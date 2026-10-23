@@ -7,6 +7,8 @@ vector, which keeps the per-image cost constant across the family.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import torch
 import torchvision
 from torch import nn
@@ -34,17 +36,23 @@ SUPPORTED_MODELS = (
 
 
 def _replace_head(model: nn.Module, name: str, num_classes: int) -> nn.Module:
+    """Replace the classification head of a torchvision backbone in place.
+
+    The head attribute differs per family (``fc``, ``classifier``,
+    ``head``, ``heads.head``) and torchvision stubs vary across releases,
+    so the backbone is intentionally accessed at a single documented
+    dynamic boundary.
+    """
+    backbone = cast(Any, model)
     if name == RESNET18:
-        model.fc = nn.Linear(model.fc.in_features, num_classes)  # type: ignore[attr-defined]
+        backbone.fc = nn.Linear(backbone.fc.in_features, num_classes)
     elif name in (EFFICIENTNET_V2, CONVNEXT):
-        head = model.classifier[-1]  # type: ignore[attr-defined]
-        model.classifier[-1] = nn.Linear(head.in_features, num_classes)  # type: ignore[attr-defined]
+        classifier = backbone.classifier
+        classifier[-1] = nn.Linear(classifier[-1].in_features, num_classes)
     elif name == SWIN_V2:
-        head = model.head  # type: ignore[attr-defined]
-        model.head = nn.Linear(head.in_features, num_classes)  # type: ignore[attr-defined]
+        backbone.head = nn.Linear(backbone.head.in_features, num_classes)
     elif name == VIT_B16:
-        head = model.heads.head  # type: ignore[attr-defined]
-        model.heads.head = nn.Linear(head.in_features, num_classes)  # type: ignore[attr-defined]
+        backbone.heads.head = nn.Linear(backbone.heads.head.in_features, num_classes)
     return model
 
 

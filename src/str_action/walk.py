@@ -137,18 +137,18 @@ def temporal_pad(video: np.ndarray, target_length: int, mode: str) -> np.ndarray
         return video[indices]
 
     if mode == "bounce":
-        indices: list[int] = []
+        positions: list[int] = []
         current = 0
         direction = 1
-        while len(indices) < target_length:
-            indices.append(current)
+        while len(positions) < target_length:
+            positions.append(current)
             if current + direction >= frames or current + direction < 0:
                 direction *= -1
                 if frames > 1:
                     current += direction
             else:
                 current += direction
-        return video[indices]
+        return video[positions]
 
     if mode == "loop":
         return video[[i % frames for i in range(target_length)]]

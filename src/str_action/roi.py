@@ -26,12 +26,13 @@ def optical_flow(path: str) -> np.ndarray:
         if not success:
             break
         current = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        flow = cv2.calcOpticalFlowFarneback(
-            previous, current, None, 0.5, 3, 15, 3, 5, 1.2, 0
-        )
+        flow = np.zeros((*current.shape, 2), dtype=np.float32)
+        cv2.calcOpticalFlowFarneback(previous, current, flow, 0.5, 3, 15, 3, 5, 1.2, 0)
         magnitude, angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
         hsv[..., 0] = angle * 180 / np.pi / 2
-        hsv[..., 2] = cv2.normalize(magnitude, None, 0, 255, cv2.NORM_MINMAX)
+        normalized = np.zeros_like(magnitude, dtype=magnitude.dtype)
+        cv2.normalize(magnitude, normalized, 0, 255, cv2.NORM_MINMAX)
+        hsv[..., 2] = normalized
         bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
         _, mask = cv2.threshold(bgr[:, :, 2], 0, 255, cv2.THRESH_OTSU)
         masks.append(mask)
