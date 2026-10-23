@@ -264,6 +264,7 @@ Apache-2.0. See [LICENSE](LICENSE).
 }
 ```
 
+```bibtex
 @software{bouacha2026str-archive,
   title   = {Recognition of Action Phases from Spatio-Temporal Intermediate
              Representations in Amateur Sports Competition Videos},
