@@ -1,0 +1,36 @@
+# Deterministic demo profile. Everything here is intentionally small so the
+# complete build / train / evaluate cycle runs on a CPU laptop in under a
+# minute. The values are demo choices, not the paper protocol.
+representation:
+  walks: 16
+  walk_length: 48
+  image_size: 48
+  roi_mode: none
+  temporal_policy: preserve
+  save_points: false
+
+build:
+  seed: 17
+
+train:
+  model: resnet18
+  epochs: 2
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  validation_fraction: 0.25
+  seed: 17
+  pretrained: false
+  dropout: 0.0
+  class_weights: balanced
+  clip_aggregation: vote
+  early_stopping_patience: 10
+
+evaluate:
+  batch_size: 8
+  clip_aggregation: vote
+
+inference:
+  seed: 17
+  batch_size: 4
+  clip_aggregation: vote

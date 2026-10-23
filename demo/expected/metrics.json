@@ -1,0 +1,27 @@
+{
+  "aggregation": "vote",
+  "class_names": [
+    "action",
+    "non_action"
+  ],
+  "clips": 8,
+  "confusion_matrix": [
+    [
+      2,
+      2
+    ],
+    [
+      3,
+      1
+    ]
+  ],
+  "data_root": "demo/str/test",
+  "images": 128,
+  "macro_f1": 0.36507936507936506,
+  "model": "resnet18",
+  "per_class_recall": [
+    0.5,
+    0.25
+  ],
+  "top1": 0.375
+}

@@ -7,6 +7,9 @@ build/
 runs/
 data/
 models/
+demo/str/
+demo/metrics.json
+.demo/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
