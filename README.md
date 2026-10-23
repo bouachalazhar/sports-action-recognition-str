@@ -264,5 +264,16 @@ Apache-2.0. See [LICENSE](LICENSE).
 }
 ```
 
-The DOI above is the article DOI. No software archive DOI has been assigned
-yet; one will be added to `CITATION.cff` only after a Zenodo deposit.
+@software{bouacha2026str-archive,
+  title   = {Recognition of Action Phases from Spatio-Temporal Intermediate
+             Representations in Amateur Sports Competition Videos},
+  author  = {Bouacha, Lazhar and Magnien, Thierry and Wendling, Laurent and
+             Kurtz, Camille},
+  version = {1.1.1},
+  year    = {2026},
+  doi     = {10.5281/zenodo.23605019}
+}
+```
+
+The `@article` entry identifies the journal paper. The `@software` entry
+identifies the archived software version that accompanies it.
