@@ -250,7 +250,7 @@ class STRImageDataset(Dataset[tuple[np.ndarray, int, int]]):
         path, label, clip_index = self.items[index]
         with Image.open(path) as handle:
             image = handle.convert("RGB").resize(
-                (self.image_size, self.image_size), Image.BILINEAR
+                (self.image_size, self.image_size), Image.Resampling.BILINEAR
             )
         array = np.asarray(image, dtype=np.float32).transpose(2, 0, 1) / 255.0
         array = (array - self.mean) / self.std

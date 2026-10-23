@@ -39,3 +39,16 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 __all__ = ["resolve_device", "seed_everything", "write_json"]
+
+
+def coerce_int(value: object) -> int:
+    """Coerce checkpoint metadata values to ``int`` with a typed narrowing."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | np.integer):
+        return int(value)
+    if isinstance(value, float | np.floating):
+        return int(value)
+    if isinstance(value, str):
+        return int(value)
+    raise TypeError(f"cannot coerce value of type {type(value).__name__!r} to int")

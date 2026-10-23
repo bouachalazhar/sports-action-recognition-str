@@ -16,7 +16,7 @@ from str_action.config import apply_defaults, config_path, load_config, section
 from str_action.evaluate import CLIP_AGGREGATIONS, clip_vote_fractions
 from str_action.models import build_model
 from str_action.roi import roi_str
-from str_action.utils import resolve_device, seed_everything, write_json
+from str_action.utils import coerce_int, resolve_device, seed_everything, write_json
 from str_action.walk import (
     TEMPORAL_POLICIES,
     random_walk_frames,
@@ -106,13 +106,15 @@ def classify_video(
     checkpoint = load_checkpoint(checkpoint_path, allow_legacy=allow_legacy_checkpoint)
     classes: list[str] = checkpoint["class_names"]
     metadata = _checkpoint_representation(checkpoint)
-    resolved_image_size = int(
+    resolved_image_size = coerce_int(
         image_size
         if image_size is not None
         else checkpoint.get("image_size", metadata.get("image_size", 224))
     )
-    resolved_walks = int(walks if walks is not None else metadata.get("walks", 1000))
-    resolved_walk_length = int(
+    resolved_walks = coerce_int(
+        walks if walks is not None else metadata.get("walks", 1000)
+    )
+    resolved_walk_length = coerce_int(
         walk_length if walk_length is not None else metadata.get("walk_length", 224)
     )
     resolved_roi_mode = str(
