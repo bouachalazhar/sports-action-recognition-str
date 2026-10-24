@@ -14,8 +14,8 @@ authors:
 repository-code: "https://github.com/bouachalazhar/sports-action-recognition-str"
 doi: "10.5281/zenodo.23605019"
 license: Apache-2.0
-version: "1.1.1"
-date-released: "2026-10-21"
+version: "1.2.0"
+date-released: "2026-10-24"
 preferred-citation:
   type: article
   title: "Recognition of Action Phases from Spatio-Temporal Intermediate Representations in Amateur Sports Competition Videos"

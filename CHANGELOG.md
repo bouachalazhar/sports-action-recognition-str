@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 — 2026-10-24
+
+Minor release.
+
+- Added a deterministic end-to-end demo (`demo/`) with a generated fixture and
+  committed expected metrics; `demo/TRANSCRIPT.md` records the commands and the
+  byte-identical two-run SHA-256 reproduction.
+- GitHub Actions are pinned to commit SHAs and CI now runs `uv run mypy src`;
+  the surfaced static-typing findings were fixed.
+
 ## 1.1.1 — 2026-10-21
 
 Patch release.
