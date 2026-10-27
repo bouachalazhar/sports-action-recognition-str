@@ -12,7 +12,7 @@ authors:
   - family-names: Kurtz
     given-names: Camille
 repository-code: "https://github.com/bouachalazhar/sports-action-recognition-str"
-doi: "10.5281/zenodo.23605019"
+doi: "10.5281/zenodo.23626761"
 license: Apache-2.0
 version: "1.2.0"
 date-released: "2026-10-24"
