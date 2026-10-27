@@ -278,9 +278,9 @@ Apache-2.0. See [LICENSE](LICENSE).
              Representations in Amateur Sports Competition Videos},
   author  = {Bouacha, Lazhar and Magnien, Thierry and Wendling, Laurent and
              Kurtz, Camille},
-  version = {1.1.1},
+  version = {1.2.0},
   year    = {2026},
-  doi     = {10.5281/zenodo.23605019}
+  doi     = {10.5281/zenodo.23626761}
 }
 ```
 
