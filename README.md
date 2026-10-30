@@ -280,7 +280,7 @@ Apache-2.0. See [LICENSE](LICENSE).
              Kurtz, Camille},
   version = {1.2.0},
   year    = {2026},
-  doi     = {10.5281/zenodo.23626761}
+  doi     = {10.5281/zenodo.23809003}
 }
 ```
 
